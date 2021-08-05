@@ -1,0 +1,75 @@
+version: '3.1'
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "6901:8000"
+    environment:
+      - DEBUG=1
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./src:/src
+    command: sh -c "gunicorn api.wsgi -b 0.0.0.0:8000 --reload"
+  # RabbitMQ - Broker
+  rabbitmq:
+      image: rabbitmq:3.8-management-alpine
+      environment:
+        - RABBITMQ_DEFAULT_USER=django-rest-api
+        - RABBITMQ_DEFAULT_PASS=djangorestapi
+        - RABBITMQ_DEFAULT_VHOST=api
+        - RABBITMQ_ERLANG_COOKIE='oWSF2vd34qoa'
+      ports:
+        - "5672:5672"
+        - "15672:15672"
+      expose:
+        - "5672"
+      volumes:
+        - ./volumes/rabbitmq:/var/lib/rabbitmq
+      logging:
+        driver: "json-file"
+        options:
+          max-size: "5m"
+          max-file: "10"
+  # Redis - Backend Result
+  redis:
+      image: redis:alpine
+      restart: always
+      privileged: true
+      ports:
+        - "6379:6379"
+      expose:
+        - "6379"
+      volumes:
+        - ./volumes/redis/data:/data
+      logging:
+        driver: "json-file"
+        options:
+          max-size: "5m"
+          max-file: "10"
+  # Celery workers
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile_celery
+    restart: always
+    environment:
+      - CELERY_BROKER_URL=pyamqp://django-rest-api:djangorestapi@rabbitmq/api
+      - CELERY_RESULT_BACKEND=redis://redis/0
+      - SITE_URL_API=http://localhost:6901
+    command: sh -c "celery -A worker worker -Q default --autoscale=5,1 -l info --loglevel=INFO"
+    volumes:
+      - ./src:/src
+    links:
+      - rabbitmq
+      - redis
+    depends_on:
+      - rabbitmq
+      - redis
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "10"

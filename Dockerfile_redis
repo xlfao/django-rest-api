@@ -1,0 +1,10 @@
+FROM redis:alpine
+WORKDIR /redis
+USER root
+ADD /config/redis/enabled /sys/kernel/mm/transparent_hugepage/enabled
+ADD /config/redis/enabled /sys/kernel/mm/transparent_hugepage/defrag
+RUN echo vm.overcommit_memory = 1 >> /etc/sysctl.conf
+RUN chown -R redis /redis
+
+USER redis
+CMD ["redis-server", "--bind", "0.0.0.0"]
